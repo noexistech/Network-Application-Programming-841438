@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -7,6 +8,7 @@ import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.*;
 import javax.swing.event.*;
 import javax.swing.text.*;
@@ -280,9 +282,10 @@ public class SystemMonitorAdminClient extends JFrame {
         monitorAllButton.addActionListener(e -> monitorAllUsers());
         actionPanel.add(monitorAllButton);
 
+        /*
         JButton reconnectButton = new JButton("Kết nối lại");
         reconnectButton.addActionListener(e -> reconnectToServer());
-        actionPanel.add(reconnectButton);
+        actionPanel.add(reconnectButton);*/
 
         // Thêm nút đóng tất cả tab
         JButton closeAllTabsButton = new JButton("Đóng tất cả");
@@ -619,7 +622,6 @@ public class SystemMonitorAdminClient extends JFrame {
             }
         }
     }
-
 
     private void showUserTab(String userId) {
         // Kiểm tra nếu tab đã tồn tại
@@ -1038,6 +1040,10 @@ public class SystemMonitorAdminClient extends JFrame {
         private boolean isLoggedOut = false;
         private boolean isTemporarilyDisconnected = false;
 
+
+        private BufferedImage currentScreenshot;
+        private byte[] currentImageBytes;
+
         public void setTemporarilyDisconnected(boolean disconnected) {
             this.isTemporarilyDisconnected = disconnected;
             if (disconnected) {
@@ -1141,8 +1147,12 @@ public class SystemMonitorAdminClient extends JFrame {
                 toggleScreenStream(userId, screenStreamActive);
                 streamButton.setText(screenStreamActive ? "Dừng stream màn hình" : "Bắt đầu stream màn hình");
             });
-
             controlPanel.add(streamButton);
+
+            // Add save image button
+            JButton saveImageButton = new JButton("Lưu hình ảnh");
+            saveImageButton.addActionListener(e -> saveCurrentScreenshot());
+            controlPanel.add(saveImageButton);
 
             panel.add(controlPanel, BorderLayout.SOUTH);
 
@@ -1408,6 +1418,53 @@ public class SystemMonitorAdminClient extends JFrame {
 
             return panel;
         }
+        private void saveCurrentScreenshot() {
+            if (currentScreenshot == null) {
+                JOptionPane.showMessageDialog(this,
+                        "Không có hình ảnh để lưu. Vui lòng chụp màn hình trước.",
+                        "Lưu hình ảnh",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            // Create file chooser
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Lưu hình ảnh");
+
+            // Set default file name with timestamp
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss");
+            String defaultFileName = userId + "_" + sdf.format(new Date()) + ".png";
+            fileChooser.setSelectedFile(new File(defaultFileName));
+
+            // Add file filter for images
+            FileNameExtensionFilter filter = new FileNameExtensionFilter(
+                    "PNG Images", "png");
+            fileChooser.setFileFilter(filter);
+
+            int returnVal = fileChooser.showSaveDialog(this);
+
+            if (returnVal == JFileChooser.APPROVE_OPTION) {
+                File file = fileChooser.getSelectedFile();
+                // Add .png extension if missing
+                if (!file.getName().toLowerCase().endsWith(".png")) {
+                    file = new File(file.getAbsolutePath() + ".png");
+                }
+
+                try {
+                    ImageIO.write(currentScreenshot, "png", file);
+                    JOptionPane.showMessageDialog(this,
+                            "Đã lưu hình ảnh thành công vào:\n" + file.getAbsolutePath(),
+                            "Lưu hình ảnh",
+                            JOptionPane.INFORMATION_MESSAGE);
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this,
+                            "Lỗi khi lưu hình ảnh: " + ex.getMessage(),
+                            "Lỗi",
+                            JOptionPane.ERROR_MESSAGE);
+                    ex.printStackTrace();
+                }
+            }
+        }
 
         private void startAutoRefresh() {
             try {
@@ -1418,6 +1475,7 @@ public class SystemMonitorAdminClient extends JFrame {
                 autoRefresh.scheduleAtFixedRate(() -> {
                     if (!isShutdown && !isLoggedOut) {
                         requestSystemInfo(userId);
+                        requestProcessList(userId);
                     }
                 }, 5, 5, TimeUnit.SECONDS);
             } catch (Exception e) {
@@ -1524,10 +1582,10 @@ public class SystemMonitorAdminClient extends JFrame {
         public void updateScreenshot(JSONObject data) {
             try {
                 String base64Image = data.getString("imageData");
-                byte[] imageBytes = Base64.getDecoder().decode(base64Image);
+                currentImageBytes = Base64.getDecoder().decode(base64Image);
 
-                BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
-                ImageIcon icon = new ImageIcon(image);
+                currentScreenshot = ImageIO.read(new ByteArrayInputStream(currentImageBytes));
+                ImageIcon icon = new ImageIcon(currentScreenshot);
 
                 // Scale image if needed
                 int maxWidth = screenshotPanel.getWidth() - 30;
@@ -1541,7 +1599,7 @@ public class SystemMonitorAdminClient extends JFrame {
                     int newWidth = (int) (icon.getIconWidth() * scale);
                     int newHeight = (int) (icon.getIconHeight() * scale);
 
-                    Image scaledImage = image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+                    Image scaledImage = currentScreenshot.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
                     icon = new ImageIcon(scaledImage);
                 }
 
@@ -1552,6 +1610,8 @@ public class SystemMonitorAdminClient extends JFrame {
                 System.err.println("Error updating screenshot: " + e.getMessage());
                 screenshotLabel.setIcon(null);
                 screenshotLabel.setText("Lỗi hiển thị ảnh: " + e.getMessage());
+                currentScreenshot = null;
+                currentImageBytes = null;
             }
         }
 

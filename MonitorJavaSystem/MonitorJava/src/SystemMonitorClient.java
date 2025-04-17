@@ -1146,7 +1146,7 @@ public class SystemMonitorClient extends JFrame {
             if (screenStreamRunning) {
                 sendScreenshot(adminId);
             }
-        }, 0, 500, TimeUnit.MILLISECONDS);
+        }, 0, 100, TimeUnit.MILLISECONDS);
     }
 
     private void stopScreenStream() {
